@@ -34,11 +34,11 @@ class Api:
     """
     def __init__(self, version):
         # type: (str) -> None
-        self.version = Version(version)
-        self.namespaces = OrderedDict()  # type: NamespaceDict
+        self.version: Version = Version(version)
+        self.namespaces: OrderedDict[str, ApiNamespace] = OrderedDict()  # type: NamespaceDict
         self.route_schema = None  # type: typing.Optional[Struct]
 
-    def ensure_namespace(self, name):
+    def ensure_namespace(self, name: str):
         # type: (str) -> ApiNamespace
         """
         Only creates a namespace if it hasn't yet been defined.

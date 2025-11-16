@@ -1,0 +1,98 @@
+{% extends "base.java.jinja" %}
+
+{% block content %}
+{{ javadoc(type.doc) }}
+public class {{ type_name(type) }}{{ extends(type) }} {
+    {% for field in type.fields %}
+    {{ nullable_annotation(field) }} final {{ type_name(field.data_type) }} {{ arg_name(field.name) }};
+    {% endfor %}
+
+    /**
+     * {% filter wordwrap(width=77, wrapstring='\n * ') | indent %}{{ type.doc }}{% endfilter +%}
+     *
+     {% for field in type.fields %}
+     * {% filter wordwrap(width=77, wrapstring='\n *     ') | indent %}@param {{ arg_name(field.name) }} {{ field.doc }}{% endfilter +%}
+     {% endfor %}
+     */
+    {{ type_name(type) }}(
+        {% for field in type.all_fields %}
+        {{ nullable_annotation(field) }} {{ type_name(field.data_type) }} {{ arg_name(field.name) }}{% if not loop.last %},{% endif +%}
+        {% endfor %}
+    ) {
+        {% if type.parent_type %}
+        super(
+            {% for field in type.parent_type.all_fields %}
+            {{ arg_name(field.name) }}{% if not loop.last %},{% endif +%}
+            {% endfor %}
+        );
+        {% endif %}
+        {% for field in type.fields %}
+        {% if not is_nullable_type(field) %}
+        if ({{ arg_name(field.name) }} == null) {
+            throw new IllegalArgumentException("Required value for '{{ arg_name(field.name) }}' is null.");
+        }
+        {% endif %}
+        this.{{ arg_name(field.name) }} = {{ arg_name(field.name) }};
+        {% endfor %}
+    }
+
+    {% for field in type.fields %}
+    {{ javadoc(field.doc) | indent }}
+    public {{ type_name(field.data_type) }} {{ getter_name(field.name) }}() {
+        return this.{{ arg_name(field.name) }};
+    }
+
+    {% endfor %}
+
+    public static class Builder {
+        {% for field in type.all_fields %}
+        {{ nullable_annotation(field) }} private {{ type_name(field.data_type) }} {{ arg_name(field.name) }}{% if has_default_value(field) %} = {{ default_value(field) }}{% endif +%};
+        {% endfor %}
+
+        public Builder(
+            {% for field in type.all_required_fields %}
+            {{ nullable_annotation(field) }} {{ type_name(field.data_type) }} {{ arg_name(field.name) }}{% if not loop.last %},{% endif +%}
+            {% endfor %}
+        ) {
+            {% for field in type.all_required_fields %}
+            this.{{ arg_name(field.name) }} = {{ arg_name(field.name) }};
+            {% endfor %}
+        }
+
+        {% if type.all_fields | length > type.all_required_fields | length %}
+        public Builder(
+            {% for field in type.all_fields %}
+            {{ nullable_annotation(field) }} {{ type_name(field.data_type) }} {{ arg_name(field.name) }}{% if not loop.last %},{% endif +%}
+            {% endfor %}
+        ) {
+            {% for field in type.all_fields %}
+            this.{{ arg_name(field.name) }} = {{ arg_name(field.name) }};
+            {% endfor %}
+        }
+        {% endif %}
+
+        public Builder(@Nonnull {{ type_name(type) }} {{ arg_name(type.name) }}) {
+            {% for field in type.all_fields %}
+            this.{{ arg_name(field.name) }} = {{ arg_name(type.name) }}.{{ arg_name(field.name) }};
+            {% endfor %}
+        }
+        {% for field in type.all_fields +%}
+        {{ nullable_annotation(field.data_type) }} public {{ type_name(field.data_type) }} {{ getter_name(field.name) }}() {
+            return this.{{ arg_name(field.name) }};
+        }
+
+        @Nonnull public Builder {{ setter_name(field.name) }}({{ nullable_annotation(field.data_type) }} {{ type_name(field.data_type) }} {{ arg_name(field.name) }}) {
+            this.{{ arg_name(field.name) }} = {{ arg_name(field.name) }};
+            return this;
+        }
+        {% endfor +%}
+        @Nonnull public {{ type_name(type) }} build() {
+            return new {{ type_name(type) }}(
+                {% for field in type.all_fields %}
+                {{ arg_name(field.name) }}{% if not loop.last %},{% endif +%}
+                {% endfor %}
+            );
+        }
+    }
+}
+{% endblock %}

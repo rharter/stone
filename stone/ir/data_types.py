@@ -12,8 +12,16 @@ import datetime
 import math
 import numbers
 import re
+import typing
+from typing import Optional
 from abc import ABCMeta, abstractmethod
 from collections import OrderedDict, deque
+
+try:
+    from typing import TypeGuard
+except ImportError:
+    # Fallback for Python < 3.10
+    from typing_extensions import TypeGuard
 
 from ..frontend.ast import (
     AstExampleField,
@@ -597,7 +605,7 @@ class Field:
         :type ast_node: stone.frontend.ast.AstField
         """
         self.name = name
-        self.data_type = data_type
+        self.data_type: DataType = data_type
         self.raw_doc = doc
         self.doc = doc_unwrap(doc)
         self._ast_node = ast_node
@@ -758,7 +766,7 @@ class UserDefined(Composite):
 
         self.raw_doc = None
         self.doc = None
-        self.fields = None
+        self.fields: Optional[List[Field]] = None
         self.parent_type = None
         self._raw_examples = None
         self._examples = None
@@ -960,7 +968,7 @@ class Struct(UserDefined):
         return validated_attrs
 
     @property
-    def all_fields(self):
+    def all_fields(self) -> typing.List[StructField]:
         """
         Returns an iterator of all fields. Required fields before optional
         fields. Super type fields before type fields.
@@ -982,7 +990,7 @@ class Struct(UserDefined):
         return fields
 
     @property
-    def all_required_fields(self):
+    def all_required_fields(self) -> typing.List[StructField]:
         """
         Returns an iterator that traverses required fields in all super types
         first, and then for this type.
@@ -992,7 +1000,7 @@ class Struct(UserDefined):
         return self._filter_fields(required_check)
 
     @property
-    def all_optional_fields(self):
+    def all_optional_fields(self) -> typing.List[StructField]:
         """
         Returns an iterator that traverses optional fields in all super types
         first, and then for this type.
@@ -1993,24 +2001,23 @@ def unwrap(data_type):
         data_type = data_type.data_type
     return data_type, unwrapped_nullable, unwrapped_alias
 
-
-def is_alias(data_type):
+def is_alias(data_type) -> TypeGuard[Alias]:
     return isinstance(data_type, Alias)
-def is_bytes_type(data_type):
+def is_bytes_type(data_type) -> TypeGuard[Bytes]:
     return isinstance(data_type, Bytes)
-def is_boolean_type(data_type):
+def is_boolean_type(data_type) -> TypeGuard[Boolean]:
     return isinstance(data_type, Boolean)
 def is_composite_type(data_type):
     return isinstance(data_type, Composite)
-def is_field_type(data_type):
+def is_field_type(data_type) -> TypeGuard[Field]:
     return isinstance(data_type, Field)
 def is_float_type(data_type):
     return isinstance(data_type, (Float32, Float64))
 def is_integer_type(data_type):
     return isinstance(data_type, (UInt32, UInt64, Int32, Int64))
-def is_list_type(data_type):
+def is_list_type(data_type) -> TypeGuard[List]:
     return isinstance(data_type, List)
-def is_map_type(data_type):
+def is_map_type(data_type) -> TypeGuard[Map]:
     return isinstance(data_type, Map)
 def is_nullable_type(data_type):
     return isinstance(data_type, Nullable)
@@ -2020,17 +2027,17 @@ def is_primitive_type(data_type):
     return isinstance(data_type, Primitive)
 def is_string_type(data_type):
     return isinstance(data_type, String)
-def is_struct_type(data_type):
+def is_struct_type(data_type) -> TypeGuard[Struct]:
     return isinstance(data_type, Struct)
 def is_tag_ref(val):
     return isinstance(val, TagRef)
 def is_timestamp_type(data_type):
     return isinstance(data_type, Timestamp)
-def is_union_type(data_type):
+def is_union_type(data_type) -> TypeGuard[Union]:
     return isinstance(data_type, Union)
-def is_user_defined_type(data_type):
+def is_user_defined_type(data_type) -> TypeGuard[UserDefined]:
     return isinstance(data_type, UserDefined)
-def is_void_type(data_type):
+def is_void_type(data_type) -> TypeGuard[Void]:
     return isinstance(data_type, Void)
 def is_int32_type(data_type):
     return isinstance(data_type, Int32)

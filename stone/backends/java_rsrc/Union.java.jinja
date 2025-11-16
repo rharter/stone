@@ -1,0 +1,115 @@
+{% extends "base.java.jinja" %}
+
+{% block imports %}
+{% for import in imports(type, namespace, ['javax.annotation.Nullable', 'javax.annotation.Nonnull']) | sort %}
+import {{ import }};
+{% endfor %}
+{% endblock %}
+
+{% set fields = filter_field_named(type.all_fields, 'other') %}
+{% set non_void_fields = non_void_fields(fields) %}
+
+{% block content %}
+{% if type.doc %}
+/**
+ * {% filter wordwrap(width=77, wrapstring='\n * ') %}{{ type.doc }}{% endfilter +%}
+ */
+{% endif %}
+public final class {{ type_name(type) }} {
+
+    /**
+     * Type discriminating tag for union type {@link {{ type_name(type) }}}.
+     */
+    public enum _Tag {
+        {% for field in fields %}
+        {% if field.doc %}
+        /**
+         * {% filter wordwrap(width=69, wrapstring='\n * ') | indent(width=8) %}{{ field.doc }}{% endfilter +%}
+         */
+        {% endif %}
+        {{ field.name | upper }}{% if loop.last and type.closed %};{% else %},{% endif +%} // {{ type_name(field.data_type) }}
+        {% endfor %}
+        {% if not type.closed %}
+        /**
+         * Catch-all used for unknown tag values.
+         *
+         * <p> Receiving a catch-all value typically indicates this SDK version
+         * is not up to date. Consider updating your SDK version to handle the
+         * new tags. </p>
+         */
+        OTHER; // *catch_all
+        {% endif %}
+    }
+
+{% if not type.closed %}
+    /**
+     * Catch-all used for unknown tag values.
+     *
+     * <p> Receiving a catch-all value typically indicates this SDK version is
+     * not up to date. Consider updating your SDK version to handle the new
+     * tags. </p>
+     */
+    public static final {{ type_name(type) }} OTHER = new {{ type_name(type) }}(
+        _Tag.OTHER{% if non_void_fields | length > 0 %},{% endif +%}
+        {% for field in non_void_fields  %}
+        null{% if not loop.last %},{% endif +%}
+        {% endfor %}
+    );
+{% endif %}
+
+    @Nonnull private final _Tag _tag;
+    {% for field in non_void_fields %}
+    @Nullable private final {{ type_name(field.data_type) }} {{ arg_name(field.name) }};
+    {% endfor %}
+
+    private {{ type_name(type) }}(
+        @Nonnull _Tag _tag,
+        {% for field in non_void_fields %}
+        @Nullable {{ type_name(field.data_type) }} {{ arg_name(field.name) }}{% if not loop.last %},{% endif +%}
+        {% endfor %}
+    ) {
+        this._tag = _tag;
+        {% for field in non_void_fields %}
+        this.{{ arg_name(field.name) }} = {{ arg_name(field.name) }};
+        {% endfor %}
+    }
+{% for field in non_void_fields +%}
+    /**
+     * Static factory function to create an instance of {{ type_name(type) }}
+     * that represents a {{ arg_name(field.name) }}.
+     *
+     * {% filter wordwrap(width=69, wrapstring='\n * ') | indent %}@param {{ arg_name(field.name) }} {{ field.doc }}{% endfilter +%}
+     */
+    public static {{ type_name(type) }} {{ arg_name(field.name) }}({{ type_name(field.data_type) }} {{ arg_name(field.name) }}) {
+        return new {{ type_name(type) }}(
+            _Tag.{{ field.name | upper }},
+            {% for i in range(loop.index0) %}
+            null,
+            {% endfor %}
+            {{ arg_name(field.name) }}{% if not loop.last %},{% endif +%}
+            {% for i in range(loop.revindex0) %}
+            null{% if not loop.last %},{% endif +%}
+            {% endfor %}
+        );
+    }
+{% endfor +%}
+{% for field in fields +%}
+    /**
+     * Returns true if the union represents a {{ arg_name(field.name) }}.
+     */
+    public boolean {{ method_name('is', field.name) }}() {
+        return _tag == _Tag.{{ field.name | upper }};
+    }
+
+    {% if not is_void_type(field.data_type) %}
+    /**
+     * Returns the current value of {{ arg_name(field.name) }} if the union value is
+     * {@link _Tag#{{ field.name | upper }}}.
+     */
+    public {{ type_name(field.data_type) }} {{ method_name('get', field.name) }}() {
+        return this.{{ arg_name(field.name) }};
+    }
+    {% endif %}
+{% endfor +%}
+}
+{% endblock %}
