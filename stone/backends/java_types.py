@@ -21,9 +21,14 @@ _cmdline_parser.add_argument(
     '--package',
     type=str,
     required=True,
-    help='Java package name of generated sources.'
+    help='Java package name of generated sources.',
 )
-
+_cmdline_parser.add_argument(
+    '--annotation-package',
+    type=str,
+    default='jakarta.annotation',
+    help='Package name containing Nonnull/Nullable annotations.',
+)
 
 class JavaTypesBackend(CodeBackend):
 
@@ -33,6 +38,8 @@ class JavaTypesBackend(CodeBackend):
         super().__init__(target_folder_path, args)
 
         self.package: str = self.args.package
+        self.nullable: str = f'{self.args.annotation_package}.Nullable'
+        self.nonnull: str = f'{self.args.annotation_package}.Nonnull'
 
     def generate(self, api: Api) -> None:
         rsrc_folder = path.join(path.dirname(__file__), 'java_rsrc')
@@ -46,6 +53,8 @@ class JavaTypesBackend(CodeBackend):
 
         template_globals = {
             'package': self.package,
+            'nullable': self.nullable,
+            'nonnull': self.nonnull,
             'imports': self.imports,
             'extends': self.extends,
             'type_name': self.fmt_type_name,
@@ -180,42 +189,6 @@ class JavaTypesBackend(CodeBackend):
         else:
             return ''
 
-    def _collect_imports(
-        self,
-        data_type: DataType,
-        namespace: ApiNamespace,
-        imports_by_namespace: Dict[str, Set[str]],
-    ):
-        data_type, is_nullable, _ = unwrap(data_type)
-
-        def add_import(package: str, fqcn: str):
-            imports_by_namespace.setdefault(package, set()).add(fqcn)
-
-        add_import(
-            'javax.annotation',
-            'javax.annotation.Nullable' if is_nullable else 'javax.annotation.Nonnull',
-        )
-
-        if is_user_defined_type(data_type):
-            # If we've already processed this type we can stop
-            if self.fmt_fqcn(data_type) in imports_by_namespace.get(data_type.namespace.name, []):
-                return
-
-            add_import(data_type.namespace.name, self.fmt_fqcn(data_type))
-
-            if data_type.parent_type is not None:
-                self._collect_imports(data_type.parent_type, namespace, imports_by_namespace)
-
-            for field in data_type.all_fields:
-                self._collect_imports(field.data_type, namespace, imports_by_namespace)
-        elif is_list_type(data_type):
-            add_import('java.util', 'java.util.List')
-            self._collect_imports(data_type.data_type, namespace, imports_by_namespace)
-        elif is_map_type(data_type):
-            add_import('java.util', 'java.util.Map')
-            self._collect_imports(data_type.key_data_type, namespace, imports_by_namespace)
-            self._collect_imports(data_type.value_data_type, namespace, imports_by_namespace)
-
     def imports(
         self,
         data_type: DataType,
@@ -229,7 +202,7 @@ class JavaTypesBackend(CodeBackend):
 
         def add_import(dt: DataType):
             dt, nullable, _ = unwrap(dt)
-            imports.add('javax.annotation.Nullable' if nullable else 'javax.annotation.Nonnull')
+            imports.add(self.nullable if nullable else self.nonnull)
             if is_user_defined_type(dt) and dt.namespace.name != namespace.name:
                 imports.add(self.fmt_fqcn(dt))
             elif is_list_type(dt):
