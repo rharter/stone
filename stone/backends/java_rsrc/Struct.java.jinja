@@ -138,5 +138,9 @@ public class {{ type_name(type) }}{{ extends(type) }} {
             {% endfor %}
             + ")";
     }
+
+    static class Serializer extends StructSerializer<{{ type_name(type) }}> {
+    }
+}
 }
 {% endblock %}

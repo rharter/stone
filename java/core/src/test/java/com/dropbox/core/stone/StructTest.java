@@ -1,4 +1,4 @@
-package com.dropbox.stone;
+package com.dropbox.core.stone;
 
 import com.dropbox.stone.basic.Person;
 import org.junit.Test;
