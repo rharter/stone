@@ -1,4 +1,4 @@
-package com.dropbox.core.stone;
+package com.dropbox.stone.core;
 
 import java.util.HashMap;
 import java.util.Map;

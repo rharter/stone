@@ -2019,7 +2019,7 @@ def is_list_type(data_type) -> TypeGuard[List]:
     return isinstance(data_type, List)
 def is_map_type(data_type) -> TypeGuard[Map]:
     return isinstance(data_type, Map)
-def is_nullable_type(data_type):
+def is_nullable_type(data_type) -> TypeGuard[Nullable]:
     return isinstance(data_type, Nullable)
 def is_numeric_type(data_type):
     return is_integer_type(data_type) or is_float_type(data_type)

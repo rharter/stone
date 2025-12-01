@@ -17,3 +17,40 @@ struct Person
         "Something fun to call this person."
     age UInt64
         "The number of years, rounded down."
+
+struct ModernPerson extends Person
+    email String(pattern="^[^@]+@[^@]+\.[^@]+$")?
+        "Set if this person has an e-mail address."
+
+struct FancyPerson extends Person
+    "Describes a fancy member of society."
+
+    primary_jewelry Jewelry
+        union
+            none
+            earring
+            necklace
+            ring
+
+struct Club
+    "A group of people collecting around a shared interest"
+
+    members List(Person)
+
+struct Payment
+    union
+        creditCard CreditCard
+        paypal Paypal
+        cash Cash
+
+    value Int64
+
+struct CreditCard extends Payment
+    number UInt64
+    cvv UInt32
+
+struct Paypal extends Payment
+    transaction_id String
+
+struct Cash extends Payment
+    "A cash payment"

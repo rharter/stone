@@ -1,8 +1,6 @@
-package com.dropbox.core.stone;
+package com.dropbox.stone.core;
 
-import com.fasterxml.jackson.core.JsonGenerationException;
 import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.core.JsonParser;
 
 import java.io.IOException;

@@ -1,0 +1,97 @@
+{% macro serializer_type_name(type) -%}
+{% if is_struct_type(type) -%}
+StructSerializer
+{%- elif is_union_type(type) -%}
+UnionSerializer
+{%- else -%}
+Serializer
+{%- endif %}
+{%- endmacro %}
+
+/** For internal use only. */
+static class Serializer extends {{ serializer_type_name(type) }}<{{ type_name(type) }}> {
+    public static final Serializer INSTANCE = new Serializer();
+{% macro render_serialize(field) -%}
+g.writeFieldName("{{ field.name }}");
+{{ serializer(field.data_type) }}.serialize(value.{{ arg_name(field.name) }}, g);
+{%- endmacro %}
+
+    @Override
+    public void serialize({{ type_name(type) }} value, JsonGenerator g{% if is_struct_type(type) %}, boolean collapse{% endif %}) throws IOException {
+        {% if is_struct_type(type) %}
+        {% if type.has_enumerated_subtypes() %}
+        {% for subtype in type.get_enumerated_subtypes() %}
+        if (value instanceof {{ type_name(subtype.data_type) }}) {
+            {{ type_name(subtype.data_type) }}.Serializer.INSTANCE.serialize(({{ type_name(subtype.data_type) }}) value, g, collapse);
+            return;
+        }
+        {% endfor %}
+        {% endif %}
+        if (!collapse) {
+            g.writeStartObject();
+        }
+        {% endif %}
+        {% for field in type.all_fields %}
+        {% if is_nullable_type(field.data_type) %}
+        if (value.{{ arg_name(field.name) }} != null) {
+            {{ render_serialize(field) | indent(16) }}
+        }
+        {% else %}
+        {{ render_serialize(field) | indent(12) }}
+        {% endif %}
+        {% endfor %}
+        {% if is_struct_type(type) %}
+        if (!collapse) {
+            g.writeEndObject();
+        }
+        {% endif %}
+    }
+
+    @Override
+    public {{ type_name(type) }} deserialize(JsonParser p, boolean collapsed) throws IOException {
+        {{ type_name(type) }} value;
+        String tag = null;
+        if (!collapsed) {
+            expectStartObject(p);
+            tag = readTag(p);
+            {# TODO Handle validation of tag #}
+        }
+        if (tag == null) {
+            {% for field in type.all_fields %}
+            {{ type_name(field.data_type) }} ${{ arg_name(field.name) }} = {% if has_default_value(field) %}{{ default_value(field) }}{% else %}null{% endif -%};
+            {% endfor %}
+            while (p.currentToken() == JsonToken.FIELD_NAME) {
+                String field = p.currentName();
+                p.nextToken();
+
+                {% for field in type.all_fields %}
+                {% if not loop.first %}else {% endif +%}
+                if (field.equals("{{ arg_name(field.name) }}")) {
+                    ${{ arg_name(field.name) }} = {{ serializer(field.data_type) }}.deserialize(p);
+                }
+                {%+ endfor -%} else {
+                    skipValue(p);
+                }
+            }
+            {% for field in type.all_required_fields %}
+            if (${{ arg_name(field.name) }} == null) {
+                throw new JsonParseException(p, String.format("Missing required field '%s'.", "{{ arg_name(field.name) }}"));
+            }
+            {% endfor %}
+
+            value = new {{ type_name(type) }}.Builder(
+                    {% for field in type.all_fields %}
+                    ${{ arg_name(field.name) }}{% if not loop.last %},{% endif +%}
+                    {% endfor %}
+            ).build();
+        } else {
+            throw new JsonParseException(p, String.format("No subtype found that matches tag: %s", tag));
+        }
+        if (!collapsed) {
+            expectEndObject(p);
+        }
+
+        StoneDeserializerLogger.log(value, serialize(value));
+        return value;
+    }
+}

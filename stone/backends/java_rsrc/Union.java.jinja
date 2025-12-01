@@ -1,7 +1,11 @@
 {% extends "base.java.jinja" %}
 
 {% block imports %}
-{% for import in imports(type, namespace, [nullable, nonnull, 'java.util.Arrays', 'java.util.Objects']) | sort %}
+{% for import in imports(type, namespace, [nullable,
+                                           nonnull,
+                                           'java.util.Arrays',
+                                           'java.util.Objects',
+                                           'java.io.IOException',]) | sort %}
 import {{ import }};
 {% endfor %}
 {% endblock %}
@@ -63,7 +67,7 @@ public final class {{ type_name(type) }} {
     {% endfor %}
 
     private {{ type_name(type) }}(
-        @Nonnull _Tag _tag,
+        @Nonnull _Tag _tag{% if non_void_fields %},{% endif +%}
         {% for field in non_void_fields %}
         @Nullable {{ type_name(field.data_type) }} {{ arg_name(field.name) }}{% if not loop.last %},{% endif +%}
         {% endfor %}
@@ -82,7 +86,7 @@ public final class {{ type_name(type) }} {
      */
     public static {{ type_name(type) }} {{ arg_name(field.name) }}({% if not is_void_type(field.data_type) %}{{ type_name(field.data_type) }} {{ arg_name(field.name) }}{% endif +%}) {
         return new {{ type_name(type) }}(
-            _Tag.{{ field.name | upper }},
+            _Tag.{{ field.name | upper }}{% if non_void_fields %},{% endif +%}
             {% for f in non_void_fields %}
             {% if f.name == field.name %}
             {{ arg_name(field.name) }}{% if not loop.last %},{% endif +%}
@@ -132,7 +136,7 @@ public final class {{ type_name(type) }} {
     @Override
     public int hashCode() {
         return Arrays.hashCode(new Object [] {
-            this._tag,
+            this._tag{% if non_void_fields %},{% endif +%}
             {% for field in non_void_fields %}
             this.{{ arg_name(field.name) }}{% if not loop.last %},{% endif +%}
             {% endfor %}
@@ -152,13 +156,16 @@ public final class {{ type_name(type) }} {
                 return false;
             }
             switch (this._tag) {
-                {% for field in fields %}
+                {% for field in fields if not is_void_type(field.data_type) %}
                 case {{ field.name | upper }}:
                     {% if is_void_type(field.data_type) %}
                     return true;
                     {% else %}
                     return Objects.equals(this.{{ arg_name(field.name) }}, other.{{ arg_name(field.name) }});
                     {% endif %}
+                {% endfor %}
+                {% for field in fields if is_void_type(field.data_type) %}
+                case {{ field.name | upper }}:
                 {% endfor %}
                 case OTHER:
                     return true;
@@ -192,5 +199,93 @@ public final class {{ type_name(type) }} {
             value
         );
     }
+    /** For internal use only. */
+    static class Serializer extends UnionSerializer<{{ type_name(type) }}> {
+        public static final Serializer INSTANCE = new Serializer();
+
+        @Override
+        public void serialize({{ type_name(type) }} value, JsonGenerator g) throws IOException {
+            switch (value.tag()) {
+                {% for field in type.all_fields if not field.catch_all %}
+                case {{ field.name | upper }}:
+                {% if is_void_type(field.data_type) %}
+                    g.writeString("{{ field.name }}");
+                {% else %}
+                    g.writeStartObject();
+                    writeTag("{{ field.name }}", g);
+                {% if is_struct_type(field.data_type) and not field.data_type.has_enumerated_subtypes() or is_nullable_type(field.data_type) and not field.data_type.data_type.has_enumerated_subtypes() %}
+
+                {% endif %}
+
+                {% endif %}
+                {% endfor %}
+            }
+            {% if is_nullable_type(field.data_type) %}
+            if (value.{{ arg_name(field.name) }} != null) {
+                {{ render_serialize(field) | indent(16) }}
+            }
+            {% else %}
+            {{ render_serialize(field) | indent(12) }}
+            {% endif %}
+            {% endfor %}
+            {% if is_struct_type(type) %}
+            if (!collapse) {
+                g.writeEndObject();
+            }
+            {% endif %}
+        }
+
+        @Override
+        public {{ type_name(type) }} deserialize(JsonParser p, boolean collapsed) throws IOException {
+            {{ type_name(type) }} value;
+            String tag = null;
+            if (!collapsed) {
+                expectStartObject(p);
+                tag = readTag(p);
+                {# TODO Handle validation of tag #}
+            }
+            if (tag == null) {
+                {% for field in type.all_fields %}
+                {{ type_name(field.data_type) }} ${{ arg_name(field.name) }} = {% if has_default_value(field) %}{{ default_value(field) }}{% else %}null{% endif -%};
+                {% endfor %}
+                while (p.currentToken() == JsonToken.FIELD_NAME) {
+                    String field = p.currentName();
+                    p.nextToken();
+
+                    {% for field in type.all_fields %}
+                    {% if not loop.first %}else {% endif +%}
+                    if (field.equals("{{ arg_name(field.name) }}")) {
+                        ${{ arg_name(field.name) }} = {{ serializer(field.data_type) }}.deserialize(p);
+                    }
+                    {%+ endfor -%} else {
+                        skipValue(p);
+                    }
+                }
+                {% for field in type.all_required_fields %}
+                if (${{ arg_name(field.name) }} == null) {
+                    throw new JsonParseException(p, String.format("Missing required field '%s'.", "{{ arg_name(field.name) }}"));
+                }
+                {% endfor %}
+
+                value = new {{ type_name(type) }}.Builder(
+                        {% for field in type.all_fields %}
+                        ${{ arg_name(field.name) }}{% if not loop.last %},{% endif +%}
+                        {% endfor %}
+                ).build();
+            } else {
+                throw new JsonParseException(p, String.format("No subtype found that matches tag: %s", tag));
+            }
+            if (!collapsed) {
+                expectEndObject(p);
+            }
+
+            StoneDeserializerLogger.log(value, serialize(value));
+            return value;
+        }
+    }
+
+    {% filter indent %}
+    {% include "_serializer.java.jinja" %}
+    {% endfilter %}
 }
 {% endblock %}

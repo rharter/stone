@@ -1,4 +1,4 @@
-package com.dropbox.core.stone;
+package com.dropbox.stone.core;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
@@ -13,10 +13,9 @@ import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
 
-public abstract class StoneSerializer<T> implements IStoneSerializer<T> {
+public abstract class StoneSerializer<T> {
     private static final Charset UTF8 = StandardCharsets.UTF_8;
 
-    @Override
     public String serialize(T value) {
         return serialize(value, false);
     }
@@ -33,7 +32,6 @@ public abstract class StoneSerializer<T> implements IStoneSerializer<T> {
         return out.toString(UTF8);
     }
 
-    @Override
     public void serialize(T value, OutputStream out) throws IOException {
         serialize(value, out, false);
     }
@@ -51,7 +49,6 @@ public abstract class StoneSerializer<T> implements IStoneSerializer<T> {
         g.flush();
     }
 
-    @Override
     public T deserialize(String json) throws JsonParseException {
         try {
             JsonParser p = Util.JSON.createParser(json);
@@ -64,7 +61,6 @@ public abstract class StoneSerializer<T> implements IStoneSerializer<T> {
         }
     }
 
-    @Override
     public T deserialize(InputStream json) throws IOException {
         JsonParser p = Util.JSON.createParser(json);
         p.nextToken();

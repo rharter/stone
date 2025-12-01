@@ -1,7 +1,7 @@
 {% extends "base.java.jinja" %}
 
 {% block imports %}
-{% for import in imports(type, namespace, ['java.util.Arrays', 'java.util.Objects']) | sort %}
+{% for import in imports(type, namespace, ['java.io.IOException', 'java.util.Arrays', 'java.util.Objects']) | sort %}
 import {{ import }};
 {% endfor %}
 {% endblock %}
@@ -32,7 +32,7 @@ public class {{ type_name(type) }}{{ extends(type) }} {
             {% endfor %}
         );
         {% endif %}
-        {% for field in type.all_fields %}
+        {% for field in type.fields %}
         {% if not is_nullable_type(field.data_type) %}
         if ({{ arg_name(field.name) }} == null) {
             throw new IllegalArgumentException("Required value for '{{ arg_name(field.name) }}' is null.");
@@ -139,8 +139,6 @@ public class {{ type_name(type) }}{{ extends(type) }} {
             + ")";
     }
 
-    static class Serializer extends StructSerializer<{{ type_name(type) }}> {
-    }
-}
+    {% include "_serializer.java.jinja" | indent %}
 }
 {% endblock %}

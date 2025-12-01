@@ -1,6 +1,5 @@
-package com.dropbox.core.stone;
+package com.dropbox.stone.basic;
 
-import com.dropbox.stone.basic.Person;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;

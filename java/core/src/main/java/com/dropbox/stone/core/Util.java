@@ -1,4 +1,4 @@
-package com.dropbox.core.stone;
+package com.dropbox.stone.core;
 
 import java.text.DateFormat;
 import java.text.ParseException;

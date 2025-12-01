@@ -12,7 +12,7 @@ from stone.backends.helpers import split_words, fmt_camel
 from stone.ir import Api, Struct, ApiNamespace, DataType, unwrap_nullable, is_user_defined_type, unwrap, UserDefined, \
     is_list_type, is_map_type, Field, is_nullable_type, is_struct_type, is_field_type, is_alias, StructField, \
     is_string_type, is_boolean_type, is_uint32_type, is_uint64_type, is_float32_type, is_float64_type, is_int32_type, \
-    is_int64_type, is_bytes_type, is_union_type, is_integer_type, is_float_type, is_void_type
+    is_int64_type, is_bytes_type, is_union_type, is_integer_type, is_float_type, is_void_type, is_timestamp_type
 
 _cmdline_parser = argparse.ArgumentParser(
     prog='java-types-backend',
@@ -57,7 +57,7 @@ class JavaTypesBackend(CodeBackend):
             'nonnull': self.nonnull,
             'imports': self.imports,
             'extends': self.extends,
-            'type_name': self.fmt_type_name,
+            'type_name': fmt_type_name,
             'arg_name': self.fmt_arg_name,
             'getter_name': self.fmt_getter_name,
             'setter_name': self.fmt_setter_name,
@@ -68,10 +68,13 @@ class JavaTypesBackend(CodeBackend):
             'has_default_value': self.has_default_value,
             'default_value': self.default_value,
             'nullable_annotation': self.nullable_annotation,
+            'is_struct_type': is_struct_type,
+            'is_union_type': is_union_type,
             'is_void_type': is_void_type,
             'is_nullable_type': is_nullable_type,
             'filter_field_named': filter_field_named,
             'non_void_fields': non_void_fields,
+            'serializer': fmt_serializer,
         }
 
         base_path = path.join(self.target_folder_path, *self.package.split('.'))
@@ -87,7 +90,7 @@ class JavaTypesBackend(CodeBackend):
                 target_file: Optional[str] = None
                 source: Optional[str] = None
                 if is_struct_type(data_type):
-                    target_file = path.join(target_dir, f'{self.fmt_type_name(data_type)}.java')
+                    target_file = path.join(target_dir, f'{fmt_type_name(data_type)}.java')
                     template = template_env.get_template(
                         name="Struct.java.jinja",
                         globals=template_globals,
@@ -97,7 +100,7 @@ class JavaTypesBackend(CodeBackend):
                         type=data_type,
                     )
                 elif is_union_type(data_type):
-                    target_file = path.join(target_dir, f'{self.fmt_type_name(data_type)}.java')
+                    target_file = path.join(target_dir, f'{fmt_type_name(data_type)}.java')
                     template = template_env.get_template(
                         name="Union.java.jinja",
                         globals=template_globals,
@@ -139,32 +142,6 @@ class JavaTypesBackend(CodeBackend):
         else:
             return '\n'.join(['/**', *self.fmt_javadoc_line(docstring).splitlines(), ' */'])
 
-    def fmt_type_name(self, data_type: DataType) -> str:
-        """Returns the Java type name for the resolved DataType"""
-        data_type, _, _ = unwrap(data_type)
-
-        # Built-in primitives should use Java types
-        if is_uint32_type(data_type) or is_int32_type(data_type):
-            return 'Integer'
-        elif is_uint64_type(data_type) or is_int64_type(data_type):
-            return 'Long'
-        elif is_float32_type(data_type):
-            return 'Float'
-        elif is_float64_type(data_type):
-            return 'Double'
-        elif is_string_type(data_type):
-            return 'String'
-        elif is_boolean_type(data_type):
-            return 'Boolean'
-        elif is_bytes_type(data_type):
-            return 'ByteArray'
-        elif is_list_type(data_type):
-            return f'List<{self.fmt_type_name(data_type.data_type)}>'
-        elif is_map_type(data_type):
-            return f'Map<{self.fmt_type_name(data_type.key_data_type)}, {self.fmt_type_name(data_type.value_data_type)}>'
-        else:
-            return ''.join([word.capitalize() for word in split_words(data_type.name)])
-
     def fmt_arg_name(self, name: str) -> str:
         return fmt_camel(name)
 
@@ -185,7 +162,7 @@ class JavaTypesBackend(CodeBackend):
     def fmt_fqcn(self, data_type: DataType) -> str:
         data_type, _, _ = unwrap(data_type)
         if is_user_defined_type(data_type):
-            return f'{self.package}.{data_type.namespace.name}.{self.fmt_type_name(data_type)}'
+            return f'{self.package}.{data_type.namespace.name}.{fmt_type_name(data_type)}'
         else:
             return ''
 
@@ -217,6 +194,18 @@ class JavaTypesBackend(CodeBackend):
         if is_user_defined_type(data_type):
             add_import(data_type)
 
+            # Add Serializer support
+            imports.add('com.dropbox.stone.core.StoneDeserializerLogger')
+            imports.add('com.dropbox.stone.core.StoneSerializers')
+            imports.add('com.fasterxml.jackson.core.JsonGenerator')
+            imports.add('com.fasterxml.jackson.core.JsonParseException')
+            imports.add('com.fasterxml.jackson.core.JsonParser')
+            imports.add('com.fasterxml.jackson.core.JsonToken')
+            if is_struct_type(data_type):
+                imports.add('com.dropbox.stone.core.StructSerializer')
+            elif is_union_type(data_type):
+                imports.add('com.dropbox.stone.core.UnionSerializer')
+
             if data_type.parent_type is not None:
                 add_import(data_type.parent_type)
 
@@ -234,14 +223,16 @@ class JavaTypesBackend(CodeBackend):
 
     def extends(self, data_type: DataType) -> str:
         if is_user_defined_type(data_type) and data_type.parent_type is not None:
-            return f' extends {self.fmt_type_name(data_type.parent_type)}'
+            return f' extends {fmt_type_name(data_type.parent_type)}'
         else:
             return ''
 
     def nullable_annotation(self, data_type: DataType) -> str:
         return "@Nullable" if _is_nullable(data_type) else "@Nonnull"
 
-    def has_default_value(self, field: StructField) -> bool:
+    def has_default_value(self, field: Field) -> bool:
+        if not isinstance(field, StructField):
+            return False
         return field.has_default or _is_nullable(field.data_type)
 
     def default_value(self, field: StructField) -> str:
@@ -259,6 +250,72 @@ class JavaTypesBackend(CodeBackend):
             return 'true' if value == 'True' else 'false'
         else:
             return value
+
+def fmt_type_name(data_type: DataType) -> str:
+    """Returns the Java type name for the resolved DataType"""
+    data_type, _, _ = unwrap(data_type)
+
+    # Built-in primitives should use Java types
+    if is_uint32_type(data_type) or is_int32_type(data_type):
+        return 'Integer'
+    elif is_uint64_type(data_type) or is_int64_type(data_type):
+        return 'Long'
+    elif is_float32_type(data_type):
+        return 'Float'
+    elif is_float64_type(data_type):
+        return 'Double'
+    elif is_string_type(data_type):
+        return 'String'
+    elif is_boolean_type(data_type):
+        return 'Boolean'
+    elif is_bytes_type(data_type):
+        return 'ByteArray'
+    elif is_list_type(data_type):
+        return f'List<{fmt_type_name(data_type.data_type)}>'
+    elif is_map_type(data_type):
+        return f'Map<{fmt_type_name(data_type.key_data_type)}, {fmt_type_name(data_type.value_data_type)}>'
+    else:
+        return ''.join([word.capitalize() for word in split_words(data_type.name)])
+
+def fmt_serializer(data_type: DataType) -> str:
+    print(f'Getting serializer for data type: {data_type.__class__}: {data_type}')
+    while is_alias(data_type):
+        data_type = data_type.data_type
+
+    if is_nullable_type(data_type):
+        if is_struct_type(data_type.data_type):
+            return f'StoneSerializers.nullableStruct({fmt_serializer(data_type.data_type)})'
+        else:
+            return f'StoneSerializers.nullable({fmt_serializer(data_type.data_type)})'
+    if is_list_type(data_type):
+        return f'StoneSerializers.list({fmt_serializer(data_type.data_type)})'
+    if is_map_type(data_type):
+        return f'StoneSerializers.map({fmt_serializer(data_type.value_data_type)})'
+    if is_user_defined_type(data_type):
+        return f'{ fmt_type_name(data_type) }.Serializer.INSTANCE'
+    if is_string_type(data_type):
+        return 'StoneSerializers.string()'
+    if is_bytes_type(data_type):
+        return 'StoneSerializers.bytes()'
+    if is_boolean_type(data_type):
+        return 'StoneSerializers.boolean_()'
+    if is_int32_type(data_type):
+        return 'StoneSerializers.int32()'
+    if is_int64_type(data_type):
+        return 'StoneSerializers.int64()'
+    if is_uint32_type(data_type):
+        return 'StoneSerializers.uInt32()'
+    if is_uint64_type(data_type):
+        return 'StoneSerializers.uInt64()'
+    if is_float32_type(data_type):
+        return 'StoneSerializers.float32()'
+    if is_float64_type(data_type):
+        return 'StoneSerializers.float64()'
+    if is_timestamp_type(data_type):
+        return 'StoneSerializers.timestamp()'
+    if is_void_type(data_type):
+        return 'StoneSerializers.void_()'
+    raise ValueError(f'No serializer for type: {data_type.__class__}: {data_type}')
 
 def filter_field_named(fields: Iterable[Field], name: str) -> Iterable[Field]:
     return [f for f in fields if f.name != name]
